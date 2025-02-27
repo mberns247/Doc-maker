@@ -134,13 +134,11 @@ def find_last_order_form_page(pdf_path):
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-app.config['UPLOAD_FOLDER'] = 'uploads'
 
-# Ensure upload folder exists
-upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), app.config['UPLOAD_FOLDER'])
-app.config['UPLOAD_FOLDER'] = upload_dir
-os.makedirs(upload_dir, exist_ok=True)
-logger.info(f"Upload directory: {upload_dir}")
+# Configure upload folder to use /tmp for Render compatibility
+app.config['UPLOAD_FOLDER'] = '/tmp/uploads'
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+logger.info(f"Upload directory: {app.config['UPLOAD_FOLDER']}")
 
 @app.route('/')
 def index():
@@ -198,12 +196,20 @@ def upload_files():
     if new_form.filename == '' or old_package.filename == '':
         return jsonify({'error': 'No selected files'}), 400
 
-    # Save uploaded files
-    new_form_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(new_form.filename))
-    old_package_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(old_package.filename))
-    
-    new_form.save(new_form_path)
-    old_package.save(old_package_path)
+    try:
+        # Save uploaded files
+        new_form_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(new_form.filename))
+        old_package_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(old_package.filename))
+        
+        logger.info(f"Saving files to: {new_form_path} and {old_package_path}")
+        new_form.save(new_form_path)
+        old_package.save(old_package_path)
+        
+        # Verify files were saved
+        if not os.path.exists(new_form_path) or not os.path.exists(old_package_path):
+            raise FileNotFoundError("Failed to save uploaded files")
+            
+        logger.info("Files saved successfully")
     
     try:
         logger.info(f"Processing files: new_form={new_form.filename}, old_package={old_package.filename}")
