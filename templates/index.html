@@ -6,14 +6,30 @@
     <title>Order Form Update Tool</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <style>
+        :root {
+            --primary: #46da8d;
+            --primary-dark: #10432e;
+        }
+        .bg-primary { background-color: var(--primary); }
+        .bg-primary-dark { background-color: var(--primary-dark); }
+        .text-primary { color: var(--primary); }
+        .text-primary-dark { color: var(--primary-dark); }
+        .border-primary { border-color: var(--primary); }
+        .border-primary-dark { border-color: var(--primary-dark); }
+        .hover\:bg-primary:hover { background-color: var(--primary); }
+        .hover\:bg-primary-dark:hover { background-color: var(--primary-dark); }
+        .focus\:ring-primary:focus { --tw-ring-color: var(--primary); }
+        .focus\:border-primary:focus { border-color: var(--primary); }
+    </style>
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
     </script>
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="bg-gray-50 min-h-screen">
     <div class="container mx-auto px-4 py-8">
-        <h1 class="text-3xl font-bold text-center mb-8 text-gray-800">Order Form Update Tool</h1>
-        <p class="text-center text-gray-600 mb-8">Replace last year's signed order form with this year's unsigned version while preserving all addendums</p>
+        <h1 class="text-4xl font-bold text-center mb-4 text-primary-dark">Order Form Update Tool</h1>
+        <p class="text-center text-gray-600 mb-8 max-w-2xl mx-auto">Replace last year's signed order form with this year's unsigned version while preserving all addendums</p>
         
         <div class="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">
             <form id="pdfForm" class="space-y-6">
@@ -22,14 +38,14 @@
                         <label class="block text-sm font-medium text-gray-700">New Unsigned Order Form</label>
                         <div class="text-xs text-gray-500 mb-2">Upload this year's blank order form</div>
                         <input type="file" name="new_form" accept=".pdf" required
-                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary focus:border-primary transition-colors duration-200">
                     </div>
                     
                     <div>
                         <label class="block text-sm font-medium text-gray-700">Last Year's Complete Package</label>
                         <div class="text-xs text-gray-500 mb-2">Upload last year's complete document package (signed order form + addendums)</div>
                         <input type="file" name="old_package" accept=".pdf" required id="oldPackageInput"
-                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary focus:border-primary transition-colors duration-200">
                     </div>
 
                     <div id="previewSection" class="hidden">
@@ -40,7 +56,7 @@
                                 <div class="w-1/2">
                                     <label class="block text-sm font-medium text-gray-700 mb-2">Order Form End Page</label>
                                     <div class="flex items-center space-x-2">
-                                        <input type="number" id="formEndPage" name="form_end_page" min="1" class="w-20 px-2 py-1 border border-gray-300 rounded-md">
+                                        <input type="number" id="formEndPage" name="form_end_page" min="1" class="w-20 px-2 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-primary focus:border-primary transition-colors duration-200">
                                         <span class="text-sm text-gray-500">of <span id="totalPages">0</span></span>
                                     </div>
                                     <p class="text-sm text-gray-500 mt-1">Suggested: Page <span id="suggestedPage">0</span></p>
@@ -49,9 +65,9 @@
                                 <div class="w-1/2">
                                     <label class="block text-sm font-medium text-gray-700 mb-2">Preview Page</label>
                                     <div class="flex items-center space-x-2">
-                                        <button type="button" id="prevPage" class="px-2 py-1 border border-gray-300 rounded-md">&lt;</button>
-                                        <span id="currentPage" class="text-sm">1</span>
-                                        <button type="button" id="nextPage" class="px-2 py-1 border border-gray-300 rounded-md">&gt;</button>
+                                        <button type="button" id="prevPage" class="px-3 py-1 border border-gray-300 rounded-lg hover:bg-primary hover:text-white hover:border-primary transition-all duration-200">&lt;</button>
+                                        <span id="currentPage" class="text-sm font-medium text-primary-dark">1</span>
+                                        <button type="button" id="nextPage" class="px-3 py-1 border border-gray-300 rounded-lg hover:bg-primary hover:text-white hover:border-primary transition-all duration-200">&gt;</button>
                                     </div>
                                 </div>
                             </div>
@@ -65,11 +81,11 @@
 
                 <div class="flex justify-center space-x-4">
                     <button type="submit"
-                        class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        class="inline-flex justify-center py-2 px-6 border border-transparent shadow-sm text-sm font-medium rounded-lg text-white bg-primary-dark hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all duration-200">
                         Update Order Form
                     </button>
                     <button type="button" id="downloadBtn" style="display: none"
-                        class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                        class="inline-flex justify-center py-2 px-6 border border-transparent shadow-sm text-sm font-medium rounded-lg text-white bg-primary hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-dark transition-all duration-200">
                         Download Result
                     </button>
                 </div>
@@ -174,7 +190,7 @@
                 
                 if (response.ok) {
                     status.textContent = 'PDFs processed successfully!';
-                    status.className = 'mt-4 text-center text-sm text-green-600';
+                    status.className = 'mt-4 text-center text-sm text-primary';
                     downloadBtn.style.display = 'inline-flex';
                     
                     // Store the filename for download
@@ -192,7 +208,7 @@
                     totalPages.textContent = `Total pages in document: ${result.details.total_pages} pages`;
                 } else {
                     status.textContent = `Error: ${result.error}`;
-                    status.className = 'mt-4 text-center text-sm text-red-600';
+                    status.className = 'mt-4 text-center text-sm text-primary-dark';
                 }
             } catch (error) {
                 status.textContent = 'An error occurred while processing the PDFs.';
