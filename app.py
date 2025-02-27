@@ -31,48 +31,73 @@ def extract_company_name(pdf_path):
 
 def replace_text_in_pdf(input_pdf_path):
     """Replace the specified text in the PDF"""
-    # Original text to find
-    old_text = "By accepting this quote, you agree to the terms and conditions in our Terms of Use and Sale for Businesses which can be viewed\nbelow. If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you\nhave the authority to bind such entity or person to the terms of this quote, including the Terms of Use and Sale for Businesses. The\ncontract terms referred to below shall govern your use of paid Trustpilot services from the earlier of: (i) the date on which you accept\nthis order form; and (ii) the \"Subscription start date\" noted above.\nTerms of Use and Sale for Businesses (https://legal.trustpilot.com/for-businesses/terms-of-use-and-sale-for-businesses)"
-    
-    # New replacement text
-    new_text = "By accepting this quote, you agree to the terms and conditions in our Service Subscription Agreement. If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you have the authority to bind such entity or person to the terms of this quote, including the Service Subscription Agreement. Please refer to the Service Subscription Agreement that has been sent together with this order form."
-    
-    # Create a temporary PDF with the new text
-    packet = BytesIO()
-    can = canvas.Canvas(packet, pagesize=letter)
-    
-    # Extract text from the original PDF to find position of old text
-    reader = PdfReader(input_pdf_path)
-    text = extract_text(input_pdf_path)
-    
-    # If we find the old text, replace it with new text
-    if old_text.replace('\n', ' ') in text.replace('\n', ' '):
-        # Add the new text (you might need to adjust coordinates)
-        can.setFont("Helvetica", 10)
-        y_position = 400  # Adjust this value based on your needs
-        for line in new_text.split('\n'):
-            can.drawString(72, y_position, line)
-            y_position -= 12
-    
-    can.save()
-    
-    # Move to the beginning of the StringIO buffer
-    packet.seek(0)
-    new_pdf = PdfReader(packet)
-    
-    # Create the output PDF
-    writer = PdfWriter()
-    
-    # Add the first page from the original PDF
-    page = reader.pages[0]
-    page.merge_page(new_pdf.pages[0])
-    writer.add_page(page)
-    
-    # Add remaining pages from original PDF
-    for page_num in range(1, len(reader.pages)):
-        writer.add_page(reader.pages[page_num])
-    
-    return writer
+    try:
+        logger.info(f"Starting text replacement for {input_pdf_path}")
+        
+        # Original text to find (normalized for comparison)
+        old_text = "By accepting this quote, you agree to the terms and conditions in our Terms of Use and Sale for Businesses which can be viewed below. If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you have the authority to bind such entity or person to the terms of this quote, including the Terms of Use and Sale for Businesses. The contract terms referred to below shall govern your use of paid Trustpilot services from the earlier of: (i) the date on which you accept this order form; and (ii) the \"Subscription start date\" noted above. Terms of Use and Sale for Businesses"
+        
+        # New replacement text
+        new_text = "By accepting this quote, you agree to the terms and conditions in our Service Subscription Agreement. If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you have the authority to bind such entity or person to the terms of this quote, including the Service Subscription Agreement. Please refer to the Service Subscription Agreement that has been sent together with this order form."
+        
+        # Create a temporary PDF with the new text
+        packet = BytesIO()
+        can = canvas.Canvas(packet, pagesize=letter)
+        
+        # Extract text from the original PDF
+        reader = PdfReader(input_pdf_path)
+        if len(reader.pages) == 0:
+            raise ValueError("PDF has no pages")
+            
+        text = extract_text(input_pdf_path)
+        logger.info("Successfully extracted text from PDF")
+        
+        # Normalize texts for comparison (remove extra spaces and newlines)
+        normalized_old_text = ' '.join(old_text.replace('\n', ' ').split())
+        normalized_pdf_text = ' '.join(text.replace('\n', ' ').split())
+        
+        # If we find the old text, replace it with new text
+        if normalized_old_text in normalized_pdf_text:
+            logger.info("Found text to replace")
+            # Add the new text (you might need to adjust coordinates)
+            can.setFont("Helvetica", 10)
+            y_position = 400  # Adjust this value based on your needs
+            text_lines = new_text.split('\n')
+            for line in text_lines:
+                can.drawString(72, y_position, line)
+                y_position -= 12
+        else:
+            logger.warning("Did not find text to replace - keeping original text")
+        
+        can.save()
+        logger.info("Created overlay with new text")
+        
+        # Move to the beginning of the StringIO buffer
+        packet.seek(0)
+        new_pdf = PdfReader(packet)
+        
+        # Create the output PDF
+        writer = PdfWriter()
+        
+        # Add all pages from the original PDF
+        for i, page in enumerate(reader.pages):
+            if i == 0 and normalized_old_text in normalized_pdf_text:
+                # Merge the first page with our new text
+                page.merge_page(new_pdf.pages[0])
+            writer.add_page(page)
+        
+        logger.info("Successfully created new PDF with replaced text")
+        return writer
+        
+    except Exception as e:
+        logger.error(f"Error in replace_text_in_pdf: {str(e)}")
+        logger.error(traceback.format_exc())
+        # Return the original PDF without modifications if there's an error
+        writer = PdfWriter()
+        reader = PdfReader(input_pdf_path)
+        for page in reader.pages:
+            writer.add_page(page)
+        return writer
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -186,13 +211,23 @@ def upload_files():
         # Create new PDF writer for the output
         output = PdfWriter()
         
-        # Process the new form with text replacement
-        company_name = extract_company_name(new_form_path)
-        modified_form = replace_text_in_pdf(new_form_path)
-        
-        # Add all pages from the modified form
-        for page in modified_form.pages:
-            output.add_page(page)
+        try:
+            # Process the new form with text replacement
+            logger.info("Extracting company name")
+            company_name = extract_company_name(new_form_path)
+            logger.info(f"Found company name: {company_name}")
+            
+            logger.info("Processing text replacement")
+            modified_form = replace_text_in_pdf(new_form_path)
+            
+            # Add all pages from the modified form
+            logger.info("Adding modified form pages to output")
+            for page in modified_form.pages:
+                output.add_page(page)
+        except Exception as e:
+            logger.error(f"Error processing new form: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise
         
         # Now process the old package
         old_package_reader = PdfReader(old_package_path)
