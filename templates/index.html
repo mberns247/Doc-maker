@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Form Update Tool</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+    </script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-center mb-8 text-gray-800">Order Form Update Tool</h1>
+        <p class="text-center text-gray-600 mb-8">Replace last year's signed order form with this year's unsigned version while preserving all addendums</p>
+        
+        <div class="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">
+            <form id="pdfForm" class="space-y-6">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">New Unsigned Order Form</label>
+                        <div class="text-xs text-gray-500 mb-2">Upload this year's blank order form</div>
+                        <input type="file" name="new_form" accept=".pdf" required
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Last Year's Complete Package</label>
+                        <div class="text-xs text-gray-500 mb-2">Upload last year's complete document package (signed order form + addendums)</div>
+                        <input type="file" name="old_package" accept=".pdf" required id="oldPackageInput"
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+
+                    <div id="previewSection" class="hidden">
+                        <div class="border-t border-gray-200 pt-4 mt-4">
+                            <h3 class="text-lg font-medium text-gray-900 mb-4">Document Preview</h3>
+                            
+                            <div class="flex space-x-4 mb-4">
+                                <div class="w-1/2">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Order Form End Page</label>
+                                    <div class="flex items-center space-x-2">
+                                        <input type="number" id="formEndPage" name="form_end_page" min="1" class="w-20 px-2 py-1 border border-gray-300 rounded-md">
+                                        <span class="text-sm text-gray-500">of <span id="totalPages">0</span></span>
+                                    </div>
+                                    <p class="text-sm text-gray-500 mt-1">Suggested: Page <span id="suggestedPage">0</span></p>
+                                </div>
+                                
+                                <div class="w-1/2">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Preview Page</label>
+                                    <div class="flex items-center space-x-2">
+                                        <button type="button" id="prevPage" class="px-2 py-1 border border-gray-300 rounded-md">&lt;</button>
+                                        <span id="currentPage" class="text-sm">1</span>
+                                        <button type="button" id="nextPage" class="px-2 py-1 border border-gray-300 rounded-md">&gt;</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border border-gray-200 rounded-lg overflow-hidden">
+                                <canvas id="pdfPreview" class="w-full"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-center space-x-4">
+                    <button type="submit"
+                        class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Update Order Form
+                    </button>
+                    <button type="button" id="downloadBtn" style="display: none"
+                        class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                        Download Result
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div id="status" class="mt-4 text-center text-sm"></div>
+        <div id="details" class="mt-4 p-4 bg-gray-50 rounded-lg hidden">
+            <h3 class="text-lg font-medium text-gray-900 mb-2">Processing Details</h3>
+            <ul class="text-sm text-gray-600 space-y-1">
+                <li id="pages-removed"></li>
+                <li id="addendums-kept"></li>
+                <li id="total-pages"></li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        let pdfDoc = null;
+        let pageNum = 1;
+        let canvas = document.getElementById('pdfPreview');
+        let ctx = canvas.getContext('2d');
+
+        async function renderPage(num) {
+            const page = await pdfDoc.getPage(num);
+            const viewport = page.getViewport({ scale: 1.5 });
+            
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            
+            await page.render({
+                canvasContext: ctx,
+                viewport: viewport
+            }).promise;
+        }
+
+        async function loadPreview(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            pdfDoc = await pdfjsLib.getDocument(arrayBuffer).promise;
+            
+            document.getElementById('totalPages').textContent = pdfDoc.numPages;
+            pageNum = 1;
+            await renderPage(pageNum);
+            document.getElementById('currentPage').textContent = pageNum;
+            
+            document.getElementById('previewSection').classList.remove('hidden');
+        }
+
+        document.getElementById('prevPage').addEventListener('click', async () => {
+            if (pageNum <= 1) return;
+            pageNum--;
+            await renderPage(pageNum);
+            document.getElementById('currentPage').textContent = pageNum;
+        });
+
+        document.getElementById('nextPage').addEventListener('click', async () => {
+            if (pageNum >= pdfDoc.numPages) return;
+            pageNum++;
+            await renderPage(pageNum);
+            document.getElementById('currentPage').textContent = pageNum;
+        });
+
+        document.getElementById('oldPackageInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                // Load preview
+                await loadPreview(file);
+                
+                // Send for analysis
+                const formData = new FormData();
+                formData.append('old_package', file);
+                
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                if (response.ok) {
+                    document.getElementById('suggestedPage').textContent = result.suggested_form_pages;
+                    document.getElementById('formEndPage').value = result.suggested_form_pages;
+                }
+            }
+        });
+
+        document.getElementById('pdfForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const status = document.getElementById('status');
+            const downloadBtn = document.getElementById('downloadBtn');
+            status.textContent = 'Processing...';
+            downloadBtn.style.display = 'none';
+
+            const formData = new FormData(e.target);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    status.textContent = 'PDFs processed successfully!';
+                    status.className = 'mt-4 text-center text-sm text-green-600';
+                    downloadBtn.style.display = 'inline-flex';
+                    
+                    // Show processing details
+                    const details = document.getElementById('details');
+                    const pagesRemoved = document.getElementById('pages-removed');
+                    const addendumsKept = document.getElementById('addendums-kept');
+                    const totalPages = document.getElementById('total-pages');
+                    
+                    details.classList.remove('hidden');
+                    pagesRemoved.textContent = `Original order form removed: ${result.details.old_form_pages_removed} pages`;
+                    addendumsKept.textContent = `Addendums preserved: ${result.details.addendums_preserved} pages`;
+                    totalPages.textContent = `New document total: ${result.details.total_pages_in_new_document} pages`;
+                } else {
+                    status.textContent = `Error: ${result.error}`;
+                    status.className = 'mt-4 text-center text-sm text-red-600';
+                }
+            } catch (error) {
+                status.textContent = 'An error occurred while processing the PDFs.';
+                status.className = 'mt-4 text-center text-sm text-red-600';
+            }
+        });
+
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            window.location.href = '/download';
+        });
+    </script>
+</body>
+</html>
