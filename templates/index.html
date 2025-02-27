@@ -177,6 +177,9 @@
                     status.className = 'mt-4 text-center text-sm text-green-600';
                     downloadBtn.style.display = 'inline-flex';
                     
+                    // Store the filename for download
+                    downloadBtn.dataset.filename = result.filename;
+                    
                     // Show processing details
                     const details = document.getElementById('details');
                     const pagesRemoved = document.getElementById('pages-removed');
@@ -186,7 +189,7 @@
                     details.classList.remove('hidden');
                     pagesRemoved.textContent = `Original order form removed: ${result.details.old_form_pages_removed} pages`;
                     addendumsKept.textContent = `Addendums preserved: ${result.details.addendums_preserved} pages`;
-                    totalPages.textContent = `New document total: ${result.details.total_pages_in_new_document} pages`;
+                    totalPages.textContent = `Total pages in document: ${result.details.total_pages} pages`;
                 } else {
                     status.textContent = `Error: ${result.error}`;
                     status.className = 'mt-4 text-center text-sm text-red-600';
@@ -198,7 +201,10 @@
         });
 
         document.getElementById('downloadBtn').addEventListener('click', () => {
-            window.location.href = '/download';
+            const filename = document.getElementById('downloadBtn').dataset.filename;
+            if (filename) {
+                window.location.href = `/download/${filename}`;
+            }
         });
     </script>
 </body>

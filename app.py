@@ -289,12 +289,18 @@ def upload_files():
         if os.path.exists(old_package_path):
             os.remove(old_package_path)
 
-@app.route('/download')
-def download_result():
-    output_path = os.path.join(app.config['UPLOAD_FOLDER'], 'result.pdf')
-    if os.path.exists(output_path):
-        return send_file(output_path, as_attachment=True, download_name='result.pdf')
-    return jsonify({'error': 'No processed file found'}), 404
+@app.route('/download/<filename>')
+def download_result(filename):
+    try:
+        output_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
+        if not os.path.exists(output_path):
+            logger.error(f"File not found: {output_path}")
+            return jsonify({'error': 'No processed file found'}), 404
+            
+        return send_file(output_path, as_attachment=True)
+    except Exception as e:
+        logger.error(f"Error downloading file: {str(e)}")
+        return jsonify({'error': f'Error downloading file: {str(e)}'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
