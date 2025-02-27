@@ -5,9 +5,74 @@ from werkzeug.utils import secure_filename
 import re
 import traceback
 import logging
-from pdfminer.high_level import extract_text_to_fp
+from datetime import datetime
+from pdfminer.high_level import extract_text_to_fp, extract_text
 from pdfminer.layout import LAParams
-from io import StringIO
+from io import StringIO, BytesIO
+from PyPDF2 import PdfReader, PdfWriter, PdfFileReader
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+
+def extract_company_name(pdf_path):
+    """Extract company name from the PDF"""
+    text = extract_text(pdf_path)
+    # Look for common patterns that might precede company name
+    patterns = [
+        r'Company\s*Name\s*:\s*([^\n]+)',
+        r'Company:\s*([^\n]+)',
+        r'Bill\s*To:\s*([^\n]+)'
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1).strip()
+    return 'Unknown'
+
+def replace_text_in_pdf(input_pdf_path):
+    """Replace the specified text in the PDF"""
+    # Original text to find
+    old_text = "By accepting this quote, you agree to the terms and conditions in our Terms of Use and Sale for Businesses which can be viewed\nbelow. If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you\nhave the authority to bind such entity or person to the terms of this quote, including the Terms of Use and Sale for Businesses. The\ncontract terms referred to below shall govern your use of paid Trustpilot services from the earlier of: (i) the date on which you accept\nthis order form; and (ii) the \"Subscription start date\" noted above.\nTerms of Use and Sale for Businesses (https://legal.trustpilot.com/for-businesses/terms-of-use-and-sale-for-businesses)"
+    
+    # New replacement text
+    new_text = "By accepting this quote, you agree to the terms and conditions in our Service Subscription Agreement. If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you have the authority to bind such entity or person to the terms of this quote, including the Service Subscription Agreement. Please refer to the Service Subscription Agreement that has been sent together with this order form."
+    
+    # Create a temporary PDF with the new text
+    packet = BytesIO()
+    can = canvas.Canvas(packet, pagesize=letter)
+    
+    # Extract text from the original PDF to find position of old text
+    reader = PdfReader(input_pdf_path)
+    text = extract_text(input_pdf_path)
+    
+    # If we find the old text, replace it with new text
+    if old_text.replace('\n', ' ') in text.replace('\n', ' '):
+        # Add the new text (you might need to adjust coordinates)
+        can.setFont("Helvetica", 10)
+        y_position = 400  # Adjust this value based on your needs
+        for line in new_text.split('\n'):
+            can.drawString(72, y_position, line)
+            y_position -= 12
+    
+    can.save()
+    
+    # Move to the beginning of the StringIO buffer
+    packet.seek(0)
+    new_pdf = PdfReader(packet)
+    
+    # Create the output PDF
+    writer = PdfWriter()
+    
+    # Add the first page from the original PDF
+    page = reader.pages[0]
+    page.merge_page(new_pdf.pages[0])
+    writer.add_page(page)
+    
+    # Add remaining pages from original PDF
+    for page_num in range(1, len(reader.pages)):
+        writer.add_page(reader.pages[page_num])
+    
+    return writer
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -121,9 +186,12 @@ def upload_files():
         # Create new PDF writer for the output
         output = PdfWriter()
         
-        # First, add the new unsigned order form
-        new_form_reader = PdfReader(new_form_path)
-        for page in new_form_reader.pages:
+        # Process the new form with text replacement
+        company_name = extract_company_name(new_form_path)
+        modified_form = replace_text_in_pdf(new_form_path)
+        
+        # Add all pages from the modified form
+        for page in modified_form.pages:
             output.add_page(page)
         
         # Now process the old package
@@ -144,7 +212,10 @@ def upload_files():
         }
         
         # Save the result
-        output_path = os.path.join(app.config['UPLOAD_FOLDER'], 'result.pdf')
+        # Generate filename with company name and today's date
+        today_date = datetime.now().strftime('%Y%m%d')
+        output_filename = f"Order Form - {company_name} - TP {today_date} - Renewal.pdf"
+        output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
         with open(output_path, 'wb') as output_file:
             output.write(output_file)
         
