@@ -210,8 +210,7 @@ def upload_files():
             raise FileNotFoundError("Failed to save uploaded files")
             
         logger.info("Files saved successfully")
-    
-    try:
+        
         logger.info(f"Processing files: new_form={new_form.filename}, old_package={old_package.filename}")
         
         # Create new PDF writer for the output
