@@ -264,20 +264,19 @@ def upload_files():
             
             return jsonify({
                 'success': True,
-                'filename': output_filename
+                'filename': output_filename,
+                'message': 'PDFs processed successfully',
+                'details': {
+                    'old_form_pages_removed': processing_info['old_form_pages'],
+                    'addendums_preserved': processing_info['addendums'],
+                    'total_pages': processing_info['total_pages']
+                }
             })
             
         except Exception as e:
             logger.error(f"Error saving output file: {str(e)}")
             logger.error(traceback.format_exc())
             return jsonify({'error': f'Error saving output file: {str(e)}'}), 500
-            'message': 'PDFs processed successfully',
-            'details': {
-                'old_form_pages_removed': processing_info['old_form_pages'],
-                'addendums_preserved': processing_info['addendums'],
-                'total_pages_in_new_document': len(new_form_reader.pages) + processing_info['addendums']
-            }
-        })
     
     except Exception as e:
         logger.error(f"Error processing PDFs: {str(e)}")
