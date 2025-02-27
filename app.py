@@ -213,26 +213,21 @@ def upload_files():
         
         logger.info(f"Processing files: new_form={new_form.filename}, old_package={old_package.filename}")
         
+        # Extract company name and process the new form
+        company_name = extract_company_name(new_form_path)
+        logger.info(f"Extracted company name: {company_name}")
+        
         # Create new PDF writer for the output
         output = PdfWriter()
         
-        try:
-            # Process the new form with text replacement
-            logger.info("Extracting company name")
-            company_name = extract_company_name(new_form_path)
-            logger.info(f"Found company name: {company_name}")
-            
-            logger.info("Processing text replacement")
-            modified_form = replace_text_in_pdf(new_form_path)
-            
-            # Add all pages from the modified form
-            logger.info("Adding modified form pages to output")
-            for page in modified_form.pages:
-                output.add_page(page)
-        except Exception as e:
-            logger.error(f"Error processing new form: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise
+        # Process the new form with text replacement
+        logger.info("Processing text replacement")
+        modified_form = replace_text_in_pdf(new_form_path)
+        
+        # Add all pages from the modified form
+        logger.info("Adding modified form pages to output")
+        for page in modified_form.pages:
+            output.add_page(page)
         
         # Now process the old package
         old_package_reader = PdfReader(old_package_path)
@@ -252,12 +247,20 @@ def upload_files():
         }
         
         # Save the result
-        # Generate filename with company name and today's date
-        today_date = datetime.now().strftime('%Y%m%d')
-        output_filename = f"Order Form - {company_name} - TP {today_date} - Renewal.pdf"
-        output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
-        with open(output_path, 'wb') as output_file:
-            output.write(output_file)
+        try:
+            # Generate filename with company name and today's date
+            today_date = datetime.now().strftime('%Y%m%d')
+            output_filename = f"Order Form - {company_name} - TP {today_date} - Renewal.pdf"
+            output_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(output_filename))
+            
+            logger.info(f"Saving output to: {output_path}")
+            with open(output_path, 'wb') as output_file:
+                output.write(output_file)
+            
+            if not os.path.exists(output_path):
+                raise FileNotFoundError("Failed to save output file")
+                
+            logger.info("Output file saved successfully")
         
         return jsonify({
             'success': True,
