@@ -261,9 +261,16 @@ def upload_files():
                 raise FileNotFoundError("Failed to save output file")
                 
             logger.info("Output file saved successfully")
-        
-        return jsonify({
-            'success': True,
+            
+            return jsonify({
+                'success': True,
+                'filename': output_filename
+            })
+            
+        except Exception as e:
+            logger.error(f"Error saving output file: {str(e)}")
+            logger.error(traceback.format_exc())
+            return jsonify({'error': f'Error saving output file: {str(e)}'}), 500
             'message': 'PDFs processed successfully',
             'details': {
                 'old_form_pages_removed': processing_info['old_form_pages'],
