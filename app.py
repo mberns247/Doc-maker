@@ -34,8 +34,12 @@ def replace_text_in_pdf(input_pdf_path):
     try:
         logger.info(f"Starting text replacement for {input_pdf_path}")
         
-        # Original text to find (normalized for comparison)
-        old_text = "By accepting this quote, you agree to the terms and conditions in our Terms of Use and Sale for Businesses which can be viewed below. If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you have the authority to bind such entity or person to the terms of this quote, including the Terms of Use and Sale for Businesses. The contract terms referred to below shall govern your use of paid Trustpilot services from the earlier of: (i) the date on which you accept this order form; and (ii) the \"Subscription start date\" noted above. Terms of Use and Sale for Businesses"
+        # Original text patterns to find
+        old_text_patterns = [
+            "Terms of Use and Sale for Businesses",
+            "The contract terms referred to below shall govern your use of paid Trustpilot services",
+            "Subscription start date"
+        ]
         
         # New replacement text
         new_text = "By accepting this quote, you agree to the terms and conditions in our Service Subscription Agreement. If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you have the authority to bind such entity or person to the terms of this quote, including the Service Subscription Agreement. Please refer to the Service Subscription Agreement that has been sent together with this order form."
@@ -47,6 +51,9 @@ def replace_text_in_pdf(input_pdf_path):
         with open(input_pdf_path, 'rb') as file:
             extract_text_to_fp(file, output_buffer, laparams=laparams)
             text_with_layout = output_buffer.getvalue()
+            
+        logger.info("Extracted text from PDF:")
+        logger.info(text_with_layout)
         
         # Find the position of the old text
         reader = PdfReader(input_pdf_path)
@@ -57,52 +64,88 @@ def replace_text_in_pdf(input_pdf_path):
         packet = BytesIO()
         can = canvas.Canvas(packet, pagesize=letter)
         
-        # Normalize texts for comparison
-        normalized_old_text = ' '.join(old_text.replace('\n', ' ').split())
-        normalized_pdf_text = ' '.join(text_with_layout.replace('\n', ' ').split())
+        # Check for presence of key phrases
+        text_found = False
+        for pattern in old_text_patterns:
+            if pattern.lower() in text_with_layout.lower():
+                text_found = True
+                logger.info(f"Found pattern: {pattern}")
+            else:
+                logger.info(f"Pattern not found: {pattern}")
         
-        if normalized_old_text in normalized_pdf_text:
+        if text_found:
             logger.info("Found text to replace")
             
             # Find the position of the text in the original PDF
-            # This requires parsing the PDF layout
             lines = text_with_layout.split('\n')
-            found_y = None
-            found_line_height = 12  # Default line height
-            found_text_height = 0  # Total height of the text block
-            text_start_y = None
+            text_blocks = []
+            current_block = {'start': None, 'end': None, 'y': None}
             
-            # Find both the start and end of the text block
+            # Find all blocks of text containing our patterns
             for i, line in enumerate(lines):
-                if any(part in line for part in ["Terms of Use", "Service Subscription Agreement"]):
-                    if text_start_y is None:
-                        text_start_y = i
-                    found_text_height += found_line_height
+                line_lower = line.lower()
+                for pattern in old_text_patterns:
+                    if pattern.lower() in line_lower:
+                        if current_block['start'] is None:
+                            current_block['start'] = i
+                            # Estimate Y position (PDF coordinates start from bottom)
+                            current_block['y'] = 792 - (i * 12)  # 12 is line height
+                        current_block['end'] = i + 1
+                        break
+                else:
+                    if current_block['start'] is not None and current_block['end'] is not None:
+                        text_blocks.append(current_block)
+                        current_block = {'start': None, 'end': None, 'y': None}
             
-            if text_start_y is not None:
-                # Calculate Y position from bottom of page
-                found_y = 792 - (text_start_y * found_line_height)  # 792 is letter height
-            else:
-                found_y = 400  # Fallback position
-                found_text_height = 100  # Default height
+            if current_block['start'] is not None:
+                text_blocks.append(current_block)
             
-            # Create a white rectangle to cover the old text
+            logger.info(f"Found {len(text_blocks)} text blocks to replace")
+            
+            # Create white rectangles to cover old text
             can.setFillColor('white')
-            can.rect(72, found_y - found_text_height, 500, found_text_height + 24, fill=True)
-            can.setFillColor('black')
+            for block in text_blocks:
+                block_height = (block['end'] - block['start']) * 12
+                y_pos = block['y']
+                can.rect(72, y_pos - block_height, 500, block_height + 24, fill=True)
             
-            # Add the new text with proper formatting
-            can.setFont("Helvetica", 10)
-            words = new_text.split()
-            current_line = []
-            x_pos = 72  # Left margin
-            y_pos = found_y
-            max_width = 500  # Maximum line width
-            
-            for word in words:
-                current_line.append(word)
-                line_text = ' '.join(current_line)
-                text_width = can.stringWidth(line_text, "Helvetica", 10)
+            # Add the new text
+            if text_blocks:
+                # Use the position of the first block for new text
+                y_pos = text_blocks[0]['y']
+                
+                can.setFillColor('black')
+                can.setFont("Helvetica", 10)
+                
+                # Split text into paragraphs
+                paragraphs = new_text.split('. ')
+                x_pos = 72  # Left margin
+                max_width = 500  # Maximum line width
+                
+                for paragraph in paragraphs:
+                    if not paragraph.endswith('.'):
+                        paragraph += '.'
+                    
+                    words = paragraph.split()
+                    current_line = []
+                    
+                    # Word wrap
+                    for word in words:
+                        current_line.append(word)
+                        line_text = ' '.join(current_line)
+                        text_width = can.stringWidth(line_text, "Helvetica", 10)
+                        
+                        if text_width > max_width:
+                            # Remove the last word and print the line
+                            current_line.pop()
+                            can.drawString(x_pos, y_pos, ' '.join(current_line))
+                            current_line = [word]
+                            y_pos -= 14  # Slightly more space between lines
+                    
+                    # Print the last line of the paragraph
+                    if current_line:
+                        can.drawString(x_pos, y_pos, ' '.join(current_line))
+                        y_pos -= 20  # More space between paragraphs
                 
                 if text_width > max_width:
                     # Remove the last word and print the line
