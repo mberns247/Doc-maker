@@ -6,17 +6,57 @@ import re
 import traceback
 import logging
 from datetime import datetime
-from pdfminer.high_level import extract_text_to_fp, extract_text
-from pdfminer.layout import LAParams
+from pdfminer.high_level import extract_text_to_fp, extract_text, extract_pages
+from pdfminer.layout import LAParams, LTTextBox, LTTextLine, LTChar
 from io import StringIO, BytesIO
-from PyPDF2 import PdfReader, PdfWriter, PdfFileReader
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+from reportlab.lib.colors import black
+from dataclasses import dataclass
+from typing import Optional, List, Tuple
+
+@dataclass
+class TextLocation:
+    """Store information about text location in PDF"""
+    page_number: int
+    bbox: Tuple[float, float, float, float]
+    text: str
+    font_name: Optional[str] = None
+    font_size: Optional[float] = None
+
+def get_font_info(text_element) -> Tuple[Optional[str], Optional[float]]:
+    """Extract font information from a text element"""
+    if not hasattr(text_element, '_objs'):
+        return None, None
+        
+    for obj in text_element._objs:
+        if isinstance(obj, LTChar):
+            return obj.fontname, obj.size
+    return None, None
+
+def find_text_location(pdf_path: str, target_text: str) -> Optional[TextLocation]:
+    """Find the exact location of target text in the PDF"""
+    logger.info(f"Searching for text: {target_text}")
+    
+    for page_layout in extract_pages(pdf_path):
+        for element in page_layout:
+            if isinstance(element, LTTextBox):
+                text = element.get_text().strip()
+                if target_text.lower() in text.lower():
+                    font_name, font_size = get_font_info(element)
+                    logger.info(f"Found text on page {page_layout.pageid}")
+                    return TextLocation(
+                        page_number=page_layout.pageid - 1,  # 0-based index
+                        bbox=element.bbox,
+                        text=text,
+                        font_name=font_name,
+                        font_size=font_size
+                    )
+    return None
 
 def extract_company_name(pdf_path):
     """Extract company name from the PDF"""
     text = extract_text(pdf_path)
-    # Look for common patterns that might precede company name
     patterns = [
         r'Company\s*Name\s*:\s*([^\n]+)',
         r'Company:\s*([^\n]+)',
@@ -34,14 +74,8 @@ def replace_text_in_pdf(input_pdf_path):
     try:
         logger.info(f"Starting text replacement for {input_pdf_path}")
         
-        # Original text patterns to find
-        old_text_patterns = [
-            "By accepting this quote, you agree to the terms and conditions in our Terms of Use and Sale for Businesses which can be viewed",
-            "below. If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you",
-            "have the authority to bind such entity or person to the terms of this quote, including the Terms of Use and Sale for Businesses. The",
-            "contract terms referred to below shall govern your use of paid Trustpilot services from the earlier of: (i) the date on which you accept",
-            "this order form; and (ii) the \"Subscription start date\" noted above."
-        ]
+        # Search text to find
+        search_text = "terms of use and sale for businesses"
         
         # New replacement text as a single block
         new_text = (
@@ -51,76 +85,50 @@ def replace_text_in_pdf(input_pdf_path):
             "Please refer to the Service Subscription Agreement that has been sent together with this order form."
         )
         
-        # Extract text and layout from the original PDF
-        laparams = LAParams()
-        output_buffer = StringIO()
-        
-        with open(input_pdf_path, 'rb') as file:
-            extract_text_to_fp(file, output_buffer, laparams=laparams)
-            text_with_layout = output_buffer.getvalue()
-            
-        logger.info("Extracted text from PDF:")
-        logger.info(text_with_layout)
-        
-        # Find which page contains our target text
-        reader = PdfReader(input_pdf_path)
-        if len(reader.pages) == 0:
-            raise ValueError("PDF has no pages")
-            
-        target_page = -1
-        for i, page in enumerate(reader.pages):
-            # Extract text from this page
-            page_buffer = StringIO()
-            extract_text_to_fp(BytesIO(page.extract_text().encode()), page_buffer, laparams=laparams)
-            page_text = page_buffer.getvalue().lower()
-            
-            # Check if this page contains our target text
-            if "terms of use and sale for businesses" in page_text:
-                target_page = i
-                logger.info(f"Found target text on page {i + 1}")
-                break
-                
-        if target_page == -1:
-            logger.warning("Could not find page containing target text")
+        # Find the exact location of the text we want to replace
+        location = find_text_location(input_pdf_path, search_text)
+        if not location:
+            logger.warning("Could not find target text")
             return None
             
+        logger.info(f"Found text on page {location.page_number + 1} at position {location.bbox}")
+        
         # Create a new PDF with the replacement text
         packet = BytesIO()
         can = canvas.Canvas(packet, pagesize=letter)
         
-        if target_page >= 0:
-            logger.info(f"Replacing text on page {target_page + 1}")
+        # Get the coordinates from the found location
+        x0, y0, x1, y1 = location.bbox
+        
+        # Position text at the same location
+        x_pos = x0
+        y_pos = y0 + 12  # Slight offset to position text properly
+        
+        # Set up text formatting
+        font_name = location.font_name or "Helvetica"
+        font_size = location.font_size or 9
+        can.setFont(font_name, font_size)
+        
+        # Create a single block of text with proper word wrapping
+        words = new_text.split()
+        current_line = []
+        max_width = x1 - x0  # Use the width from the original text block
+        
+        for word in words:
+            test_line = current_line + [word]
+            line_width = can.stringWidth(' '.join(test_line), font_name, font_size)
             
-            # Position text above signature section on second page
-            base_y = 200  # Points from bottom of page
-            x_pos = 50   # Left margin to match document
-            
-            # Set up text formatting
-            can.setFont("Helvetica", 9)  # Match original font size
-            
-            # Create a single block of text with proper word wrapping
-            words = new_text.replace('\n', ' ').split()
-            current_line = []
-            y_pos = base_y
-            max_width = 550  # Maximum line width
-            
-            for word in words:
-                test_line = current_line + [word]
-                line_width = can.stringWidth(' '.join(test_line), "Helvetica", 9)
-                
-                if line_width <= max_width:
-                    current_line.append(word)
-                else:
-                    # Draw current line
-                    can.drawString(x_pos, y_pos, ' '.join(current_line))
-                    y_pos -= 12  # Line spacing
-                    current_line = [word]
-            
-            # Draw final line if any words remain
-            if current_line:
+            if line_width <= max_width:
+                current_line.append(word)
+            else:
+                # Draw current line
                 can.drawString(x_pos, y_pos, ' '.join(current_line))
-        else:
-            logger.warning("Did not find text to replace - keeping original text")
+                y_pos -= font_size + 2  # Line spacing based on font size
+                current_line = [word]
+        
+        # Draw final line if any words remain
+        if current_line:
+            can.drawString(x_pos, y_pos, ' '.join(current_line))
         
         can.save()
         logger.info("Created overlay with new text")
@@ -131,8 +139,9 @@ def replace_text_in_pdf(input_pdf_path):
         writer = PdfWriter()
         
         # Add all pages from the original PDF
+        reader = PdfReader(input_pdf_path)
         for i, page in enumerate(reader.pages):
-            if i == target_page:  # Apply to the page where we found the text
+            if i == location.page_number:
                 page.merge_page(new_pdf.pages[0])
             writer.add_page(page)
         
@@ -142,12 +151,8 @@ def replace_text_in_pdf(input_pdf_path):
     except Exception as e:
         logger.error(f"Error in replace_text_in_pdf: {str(e)}")
         logger.error(traceback.format_exc())
-        # Return the original PDF without modifications if there's an error
-        writer = PdfWriter()
-        reader = PdfReader(input_pdf_path)
-        for page in reader.pages:
-            writer.add_page(page)
-        return writer
+        # Return None to indicate failure
+        return None
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
