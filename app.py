@@ -85,12 +85,11 @@ def replace_text_in_pdf(input_pdf_path):
             
             # Position the text near the bottom of the page, above the signature section
             # Standard letter page height is 792 points (11 inches)
-            # We want to position this above the signature section which starts around 200 points from bottom
-            base_y = 250  # Points from bottom of page
+            base_y = 180  # Points from bottom of page - positioned just above signature section
             
             # Create a white rectangle to cover the old text area
             can.setFillColor('white')
-            can.rect(72, base_y - 100, 500, 120, fill=True)  # Cover a larger area to ensure old text is removed
+            can.rect(50, base_y - 80, 550, 100, fill=True)  # Wider rectangle to ensure coverage
             
             # Set up text formatting
             can.setFillColor('black')
@@ -129,40 +128,6 @@ def replace_text_in_pdf(input_pdf_path):
                 if current_line:
                     can.drawString(x_pos, y_pos, ' '.join(current_line))
                     y_pos -= line_height
-            
-            # Process each line of text
-            for line in new_text.split('\n'):
-                if line.strip() == '':
-                    # Add extra space for paragraph breaks
-                    y_pos -= paragraph_spacing
-                    continue
-                    
-                # Word wrap for each line
-                words = line.split()
-                current_line = []
-                x_pos = 72  # Left margin
-                
-                for word in words:
-                    test_line = current_line + [word]
-                    line_width = can.stringWidth(' '.join(test_line), "Helvetica", 9)
-                    
-                    if line_width <= 500:  # Max width
-                        current_line.append(word)
-                    else:
-                        # Draw current line and start new one
-                        can.drawString(x_pos, y_pos, ' '.join(current_line))
-                        y_pos -= line_height
-                        current_line = [word]
-                
-                # Draw remaining words
-                if current_line:
-                    can.drawString(x_pos, y_pos, ' '.join(current_line))
-                    y_pos -= line_height
-                    y_pos -= found_line_height
-            
-            # Print the last line if any words remain
-            if current_line:
-                can.drawString(x_pos, y_pos, ' '.join(current_line))
         else:
             logger.warning("Did not find text to replace - keeping original text")
         
@@ -176,7 +141,7 @@ def replace_text_in_pdf(input_pdf_path):
         
         # Add all pages from the original PDF
         for i, page in enumerate(reader.pages):
-            if i == 0 and normalized_old_text in normalized_pdf_text:
+            if i == 0 and text_found:
                 # Create a white rectangle to cover the old text
                 page.merge_page(new_pdf.pages[0])
             writer.add_page(page)
