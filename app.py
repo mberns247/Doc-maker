@@ -93,20 +93,32 @@ def replace_text_in_pdf(input_pdf_path):
             
         logger.info(f"Found text on page {location.page_number + 1} at position {location.bbox}")
         
-        # Create a new PDF with the replacement text
+        # Create a new PDF with the white rectangle and replacement text
         packet = BytesIO()
         can = canvas.Canvas(packet, pagesize=letter)
         
         # Get the coordinates from the found location
         x0, y0, x1, y1 = location.bbox
         
+        # First create a white rectangle to cover the old text
+        # Make it slightly larger than the text box
+        padding = 2
+        can.setFillColor('white')
+        can.rect(x0 - padding, 
+                y0 - padding,
+                x1 - x0 + (2 * padding),
+                y1 - y0 + (2 * padding),
+                fill=True,
+                stroke=False)
+        
         # Position text at the same location
         x_pos = x0
-        y_pos = y0 + 12  # Slight offset to position text properly
+        y_pos = y1 - font_size  # Position from top of box
         
         # Set up text formatting
         font_name = location.font_name or "Helvetica"
         font_size = location.font_size or 9
+        can.setFillColor('black')
         can.setFont(font_name, font_size)
         
         # Create a single block of text with proper word wrapping
@@ -142,6 +154,24 @@ def replace_text_in_pdf(input_pdf_path):
         reader = PdfReader(input_pdf_path)
         for i, page in enumerate(reader.pages):
             if i == location.page_number:
+                # Remove any hyperlinks in the target area
+                if '/Annots' in page:
+                    annotations = page['/Annots']
+                    if annotations:
+                        # Filter out annotations that overlap with our text area
+                        new_annotations = []
+                        for annot in annotations:
+                            if isinstance(annot, dict):
+                                annot_obj = annot.get_object()
+                                if '/Rect' in annot_obj:
+                                    ax0, ay0, ax1, ay1 = annot_obj['/Rect']
+                                    # Check if annotation overlaps with our text area
+                                    if not (ax0 >= x1 or ax1 <= x0 or ay0 >= y1 or ay1 <= y0):
+                                        continue
+                                new_annotations.append(annot)
+                        page['/Annots'] = new_annotations
+                
+                # Add our white rectangle and new text
                 page.merge_page(new_pdf.pages[0])
             writer.add_page(page)
         
