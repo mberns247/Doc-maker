@@ -30,7 +30,7 @@ def extract_company_name(pdf_path):
     return 'Unknown'
 
 def replace_text_in_pdf(input_pdf_path):
-    """Replace the specified text in the PDF"""
+    """Replace the specified text in the PDF while preserving formatting"""
     try:
         logger.info(f"Starting text replacement for {input_pdf_path}")
         
@@ -40,49 +40,95 @@ def replace_text_in_pdf(input_pdf_path):
         # New replacement text
         new_text = "By accepting this quote, you agree to the terms and conditions in our Service Subscription Agreement. If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you have the authority to bind such entity or person to the terms of this quote, including the Service Subscription Agreement. Please refer to the Service Subscription Agreement that has been sent together with this order form."
         
-        # Create a temporary PDF with the new text
-        packet = BytesIO()
-        can = canvas.Canvas(packet, pagesize=letter)
+        # Extract text and layout from the original PDF
+        laparams = LAParams()
+        output_buffer = StringIO()
         
-        # Extract text from the original PDF
+        with open(input_pdf_path, 'rb') as file:
+            extract_text_to_fp(file, output_buffer, laparams=laparams)
+            text_with_layout = output_buffer.getvalue()
+        
+        # Find the position of the old text
         reader = PdfReader(input_pdf_path)
         if len(reader.pages) == 0:
             raise ValueError("PDF has no pages")
-            
-        text = extract_text(input_pdf_path)
-        logger.info("Successfully extracted text from PDF")
         
-        # Normalize texts for comparison (remove extra spaces and newlines)
+        # Create a new PDF with the replacement text
+        packet = BytesIO()
+        can = canvas.Canvas(packet, pagesize=letter)
+        
+        # Normalize texts for comparison
         normalized_old_text = ' '.join(old_text.replace('\n', ' ').split())
-        normalized_pdf_text = ' '.join(text.replace('\n', ' ').split())
+        normalized_pdf_text = ' '.join(text_with_layout.replace('\n', ' ').split())
         
-        # If we find the old text, replace it with new text
         if normalized_old_text in normalized_pdf_text:
             logger.info("Found text to replace")
-            # Add the new text (you might need to adjust coordinates)
+            
+            # Find the position of the text in the original PDF
+            # This requires parsing the PDF layout
+            lines = text_with_layout.split('\n')
+            found_y = None
+            found_line_height = 12  # Default line height
+            found_text_height = 0  # Total height of the text block
+            text_start_y = None
+            
+            # Find both the start and end of the text block
+            for i, line in enumerate(lines):
+                if any(part in line for part in ["Terms of Use", "Service Subscription Agreement"]):
+                    if text_start_y is None:
+                        text_start_y = i
+                    found_text_height += found_line_height
+            
+            if text_start_y is not None:
+                # Calculate Y position from bottom of page
+                found_y = 792 - (text_start_y * found_line_height)  # 792 is letter height
+            else:
+                found_y = 400  # Fallback position
+                found_text_height = 100  # Default height
+            
+            # Create a white rectangle to cover the old text
+            can.setFillColor('white')
+            can.rect(72, found_y - found_text_height, 500, found_text_height + 24, fill=True)
+            can.setFillColor('black')
+            
+            # Add the new text with proper formatting
             can.setFont("Helvetica", 10)
-            y_position = 400  # Adjust this value based on your needs
-            text_lines = new_text.split('\n')
-            for line in text_lines:
-                can.drawString(72, y_position, line)
-                y_position -= 12
+            words = new_text.split()
+            current_line = []
+            x_pos = 72  # Left margin
+            y_pos = found_y
+            max_width = 500  # Maximum line width
+            
+            for word in words:
+                current_line.append(word)
+                line_text = ' '.join(current_line)
+                text_width = can.stringWidth(line_text, "Helvetica", 10)
+                
+                if text_width > max_width:
+                    # Remove the last word and print the line
+                    current_line.pop()
+                    can.drawString(x_pos, y_pos, ' '.join(current_line))
+                    current_line = [word]
+                    y_pos -= found_line_height
+            
+            # Print the last line if any words remain
+            if current_line:
+                can.drawString(x_pos, y_pos, ' '.join(current_line))
         else:
             logger.warning("Did not find text to replace - keeping original text")
         
         can.save()
         logger.info("Created overlay with new text")
         
-        # Move to the beginning of the StringIO buffer
+        # Create the output PDF
         packet.seek(0)
         new_pdf = PdfReader(packet)
-        
-        # Create the output PDF
         writer = PdfWriter()
         
         # Add all pages from the original PDF
         for i, page in enumerate(reader.pages):
             if i == 0 and normalized_old_text in normalized_pdf_text:
-                # Merge the first page with our new text
+                # Create a white rectangle to cover the old text
                 page.merge_page(new_pdf.pages[0])
             writer.add_page(page)
         
