@@ -43,11 +43,11 @@ def replace_text_in_pdf(input_pdf_path):
             "this order form; and (ii) the \"Subscription start date\" noted above."
         ]
         
-        # New replacement text with proper line breaks
+        # New replacement text as a single block
         new_text = (
-            "By accepting this quote, you agree to the terms and conditions in our Service Subscription Agreement. \n\n"
-            "If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you \n"
-            "have the authority to bind such entity or person to the terms of this quote, including the Service Subscription Agreement. \n\n"
+            "By accepting this quote, you agree to the terms and conditions in our Service Subscription Agreement. "
+            "If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you "
+            "have the authority to bind such entity or person to the terms of this quote, including the Service Subscription Agreement. "
             "Please refer to the Service Subscription Agreement that has been sent together with this order form."
         )
         
@@ -62,72 +62,63 @@ def replace_text_in_pdf(input_pdf_path):
         logger.info("Extracted text from PDF:")
         logger.info(text_with_layout)
         
-        # Find the position of the old text
+        # Find which page contains our target text
         reader = PdfReader(input_pdf_path)
         if len(reader.pages) == 0:
             raise ValueError("PDF has no pages")
-        
+            
+        target_page = -1
+        for i, page in enumerate(reader.pages):
+            # Extract text from this page
+            page_buffer = StringIO()
+            extract_text_to_fp(BytesIO(page.extract_text().encode()), page_buffer, laparams=laparams)
+            page_text = page_buffer.getvalue().lower()
+            
+            # Check if this page contains our target text
+            if "terms of use and sale for businesses" in page_text:
+                target_page = i
+                logger.info(f"Found target text on page {i + 1}")
+                break
+                
+        if target_page == -1:
+            logger.warning("Could not find page containing target text")
+            return None
+            
         # Create a new PDF with the replacement text
         packet = BytesIO()
         can = canvas.Canvas(packet, pagesize=letter)
         
-        # Check for presence of key phrases
-        text_found = False
-        for pattern in old_text_patterns:
-            if pattern.lower() in text_with_layout.lower():
-                text_found = True
-                logger.info(f"Found pattern: {pattern}")
-            else:
-                logger.info(f"Pattern not found: {pattern}")
-        
-        if text_found:
-            logger.info("Found text to replace")
+        if target_page >= 0:
+            logger.info(f"Replacing text on page {target_page + 1}")
             
-            # Position the text near the bottom of the page, above the signature section
-            # Standard letter page height is 792 points (11 inches)
-            base_y = 180  # Points from bottom of page - positioned just above signature section
-            
-            # Create a white rectangle to cover the old text area
-            can.setFillColor('white')
-            can.rect(50, base_y - 80, 550, 100, fill=True)  # Wider rectangle to ensure coverage
+            # Position text above signature section on second page
+            base_y = 200  # Points from bottom of page
+            x_pos = 50   # Left margin to match document
             
             # Set up text formatting
-            can.setFillColor('black')
-            can.setFont("Helvetica", 9)  # Slightly smaller font to match the original
+            can.setFont("Helvetica", 9)  # Match original font size
             
-            # Split text into lines and draw
+            # Create a single block of text with proper word wrapping
+            words = new_text.replace('\n', ' ').split()
+            current_line = []
             y_pos = base_y
-            line_height = 12
-            paragraph_spacing = 6
+            max_width = 550  # Maximum line width
             
-            # Process each line of text
-            for line in new_text.split('\n'):
-                if line.strip() == '':
-                    # Add extra space for paragraph breaks
-                    y_pos -= paragraph_spacing
-                    continue
-                    
-                # Word wrap for each line
-                words = line.split()
-                current_line = []
-                x_pos = 72  # Left margin
+            for word in words:
+                test_line = current_line + [word]
+                line_width = can.stringWidth(' '.join(test_line), "Helvetica", 9)
                 
-                for word in words:
-                    test_line = current_line + [word]
-                    line_width = can.stringWidth(' '.join(test_line), "Helvetica", 9)
-                    
-                    if line_width <= 500:  # Max width
-                        current_line.append(word)
-                    else:
-                        # Draw current line and start new one
-                        can.drawString(x_pos, y_pos, ' '.join(current_line))
-                        y_pos -= line_height
-                        current_line = [word]
-                
-                # Draw remaining words
-                if current_line:
+                if line_width <= max_width:
+                    current_line.append(word)
+                else:
+                    # Draw current line
                     can.drawString(x_pos, y_pos, ' '.join(current_line))
-                    y_pos -= line_height
+                    y_pos -= 12  # Line spacing
+                    current_line = [word]
+            
+            # Draw final line if any words remain
+            if current_line:
+                can.drawString(x_pos, y_pos, ' '.join(current_line))
         else:
             logger.warning("Did not find text to replace - keeping original text")
         
@@ -141,8 +132,7 @@ def replace_text_in_pdf(input_pdf_path):
         
         # Add all pages from the original PDF
         for i, page in enumerate(reader.pages):
-            if i == 0 and text_found:
-                # Create a white rectangle to cover the old text
+            if i == target_page:  # Apply to the page where we found the text
                 page.merge_page(new_pdf.pages[0])
             writer.add_page(page)
         
