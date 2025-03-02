@@ -36,13 +36,20 @@ def replace_text_in_pdf(input_pdf_path):
         
         # Original text patterns to find
         old_text_patterns = [
-            "Terms of Use and Sale for Businesses",
-            "The contract terms referred to below shall govern your use of paid Trustpilot services",
-            "Subscription start date"
+            "By accepting this quote, you agree to the terms and conditions in our Terms of Use and Sale for Businesses which can be viewed",
+            "below. If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you",
+            "have the authority to bind such entity or person to the terms of this quote, including the Terms of Use and Sale for Businesses. The",
+            "contract terms referred to below shall govern your use of paid Trustpilot services from the earlier of: (i) the date on which you accept",
+            "this order form; and (ii) the \"Subscription start date\" noted above."
         ]
         
-        # New replacement text
-        new_text = "By accepting this quote, you agree to the terms and conditions in our Service Subscription Agreement. If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you have the authority to bind such entity or person to the terms of this quote, including the Service Subscription Agreement. Please refer to the Service Subscription Agreement that has been sent together with this order form."
+        # New replacement text with proper line breaks
+        new_text = (
+            "By accepting this quote, you agree to the terms and conditions in our Service Subscription Agreement. \n\n"
+            "If you accept this quote on behalf of a company or other legal entity or person, your acceptance also represents that you \n"
+            "have the authority to bind such entity or person to the terms of this quote, including the Service Subscription Agreement. \n\n"
+            "Please refer to the Service Subscription Agreement that has been sent together with this order form."
+        )
         
         # Extract text and layout from the original PDF
         laparams = LAParams()
@@ -76,82 +83,81 @@ def replace_text_in_pdf(input_pdf_path):
         if text_found:
             logger.info("Found text to replace")
             
-            # Find the position of the text in the original PDF
-            lines = text_with_layout.split('\n')
-            text_blocks = []
-            current_block = {'start': None, 'end': None, 'y': None}
+            # Position the text near the bottom of the page, above the signature section
+            # Standard letter page height is 792 points (11 inches)
+            # We want to position this above the signature section which starts around 200 points from bottom
+            base_y = 250  # Points from bottom of page
             
-            # Find all blocks of text containing our patterns
-            for i, line in enumerate(lines):
-                line_lower = line.lower()
-                for pattern in old_text_patterns:
-                    if pattern.lower() in line_lower:
-                        if current_block['start'] is None:
-                            current_block['start'] = i
-                            # Estimate Y position (PDF coordinates start from bottom)
-                            current_block['y'] = 792 - (i * 12)  # 12 is line height
-                        current_block['end'] = i + 1
-                        break
-                else:
-                    if current_block['start'] is not None and current_block['end'] is not None:
-                        text_blocks.append(current_block)
-                        current_block = {'start': None, 'end': None, 'y': None}
-            
-            if current_block['start'] is not None:
-                text_blocks.append(current_block)
-            
-            logger.info(f"Found {len(text_blocks)} text blocks to replace")
-            
-            # Create white rectangles to cover old text
+            # Create a white rectangle to cover the old text area
             can.setFillColor('white')
-            for block in text_blocks:
-                block_height = (block['end'] - block['start']) * 12
-                y_pos = block['y']
-                can.rect(72, y_pos - block_height, 500, block_height + 24, fill=True)
+            can.rect(72, base_y - 100, 500, 120, fill=True)  # Cover a larger area to ensure old text is removed
             
-            # Add the new text
-            if text_blocks:
-                # Use the position of the first block for new text
-                y_pos = text_blocks[0]['y']
-                
-                can.setFillColor('black')
-                can.setFont("Helvetica", 10)
-                
-                # Split text into paragraphs
-                paragraphs = new_text.split('. ')
+            # Set up text formatting
+            can.setFillColor('black')
+            can.setFont("Helvetica", 9)  # Slightly smaller font to match the original
+            
+            # Split text into lines and draw
+            y_pos = base_y
+            line_height = 12
+            paragraph_spacing = 6
+            
+            # Process each line of text
+            for line in new_text.split('\n'):
+                if line.strip() == '':
+                    # Add extra space for paragraph breaks
+                    y_pos -= paragraph_spacing
+                    continue
+                    
+                # Word wrap for each line
+                words = line.split()
+                current_line = []
                 x_pos = 72  # Left margin
-                max_width = 500  # Maximum line width
                 
-                for paragraph in paragraphs:
-                    if not paragraph.endswith('.'):
-                        paragraph += '.'
+                for word in words:
+                    test_line = current_line + [word]
+                    line_width = can.stringWidth(' '.join(test_line), "Helvetica", 9)
                     
-                    words = paragraph.split()
-                    current_line = []
-                    
-                    # Word wrap
-                    for word in words:
+                    if line_width <= 500:  # Max width
                         current_line.append(word)
-                        line_text = ' '.join(current_line)
-                        text_width = can.stringWidth(line_text, "Helvetica", 10)
-                        
-                        if text_width > max_width:
-                            # Remove the last word and print the line
-                            current_line.pop()
-                            can.drawString(x_pos, y_pos, ' '.join(current_line))
-                            current_line = [word]
-                            y_pos -= 14  # Slightly more space between lines
-                    
-                    # Print the last line of the paragraph
-                    if current_line:
+                    else:
+                        # Draw current line and start new one
                         can.drawString(x_pos, y_pos, ' '.join(current_line))
-                        y_pos -= 20  # More space between paragraphs
+                        y_pos -= line_height
+                        current_line = [word]
                 
-                if text_width > max_width:
-                    # Remove the last word and print the line
-                    current_line.pop()
+                # Draw remaining words
+                if current_line:
                     can.drawString(x_pos, y_pos, ' '.join(current_line))
-                    current_line = [word]
+                    y_pos -= line_height
+            
+            # Process each line of text
+            for line in new_text.split('\n'):
+                if line.strip() == '':
+                    # Add extra space for paragraph breaks
+                    y_pos -= paragraph_spacing
+                    continue
+                    
+                # Word wrap for each line
+                words = line.split()
+                current_line = []
+                x_pos = 72  # Left margin
+                
+                for word in words:
+                    test_line = current_line + [word]
+                    line_width = can.stringWidth(' '.join(test_line), "Helvetica", 9)
+                    
+                    if line_width <= 500:  # Max width
+                        current_line.append(word)
+                    else:
+                        # Draw current line and start new one
+                        can.drawString(x_pos, y_pos, ' '.join(current_line))
+                        y_pos -= line_height
+                        current_line = [word]
+                
+                # Draw remaining words
+                if current_line:
+                    can.drawString(x_pos, y_pos, ' '.join(current_line))
+                    y_pos -= line_height
                     y_pos -= found_line_height
             
             # Print the last line if any words remain
