@@ -313,10 +313,28 @@ def upload_files():
         logger.info("Processing text replacement")
         modified_form = replace_text_in_pdf(new_form_path)
         
+        # Create a temporary file for the modified form
+        temp_modified_form = os.path.join(app.config['UPLOAD_FOLDER'], 'temp_modified_form.pdf')
+        logger.info(f"Writing modified form to temporary file: {temp_modified_form}")
+        with open(temp_modified_form, 'wb') as f:
+            modified_form.write(f)
+        
+        # Verify the temporary file was created
+        if not os.path.exists(temp_modified_form):
+            raise FileNotFoundError("Failed to create temporary modified form")
+        
+        # Read the modified form back
+        logger.info("Reading back modified form")
+        modified_reader = PdfReader(temp_modified_form)
+        logger.info(f"Modified form has {len(modified_reader.pages)} pages")
+        
         # Add all pages from the modified form
         logger.info("Adding modified form pages to output")
-        for page in modified_form.pages:
+        for page in modified_reader.pages:
             output.add_page(page)
+            
+        # Clean up temporary file
+        os.remove(temp_modified_form)
         
         # Now process the old package
         old_package_reader = PdfReader(old_package_path)
